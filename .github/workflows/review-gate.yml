@@ -1,0 +1,123 @@
+name: review-gate
+# Implements PRD §9.7 — three-layer pre-merge review gate.
+# Layer 1 narrow reviewers run in parallel. Layer 2 (Lucious apex review)
+# runs after Layer 1 passes. Branch protection on `main` should require all
+# four status checks below to pass.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+# Cancel any in-flight review run for the same PR when a new push arrives.
+# The invoked review task itself is idempotent by PR + agent + layer, creating
+# or reusing Linear first and then creating or reusing the Multica mirror.
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write   # read PR metadata + post reviews in all jobs
+  contents: read         # actions/checkout on private repo (unlisted perms default to none)
+  # contents: write is overridden per-job in layer2-lucious only (gh pr merge)
+
+# Runs on a self-hosted runner co-located with the Multica self-host stack
+# (backend on http://localhost:8082). Hosted runners can't reach localhost.
+
+env:
+  MULTICA_BASE_URL: ${{ vars.MULTICA_BASE_URL || 'http://localhost:8082' }}
+  MULTICA_WORKSPACE_ID: ${{ vars.MULTICA_WORKSPACE_ID }}
+  JARVIS_CONFIG: ${{ vars.JARVIS_CONFIG }}
+  LINEAR_TEAM_ID: ${{ vars.LINEAR_TEAM_ID }}
+  LINEAR_REVIEW_LABEL: ${{ vars.LINEAR_REVIEW_LABEL || 'review-gate' }}
+  LINEAR_REVIEW_DONE_STATE_NAME: ${{ vars.LINEAR_REVIEW_DONE_STATE_NAME }}
+  LINEAR_REVIEW_CHANGES_STATE_NAME: ${{ vars.LINEAR_REVIEW_CHANGES_STATE_NAME }}
+  LINEAR_REVIEW_BLOCKED_STATE_NAME: ${{ vars.LINEAR_REVIEW_BLOCKED_STATE_NAME }}
+
+jobs:
+  layer1-sec-review:
+    name: Layer 1 · sec-review
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Invoke sec-review via Linear and Multica
+        env:
+          MULTICA_API_KEY: ${{ secrets.MULTICA_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/invoke_multica_review.py \
+            --agent sec-review \
+            --pr ${{ github.event.pull_request.number }} \
+            --author-kind ${{ github.event.pull_request.user.login == 'BenjiMbugua' && 'human' || 'multica' }} \
+            --blocking-for human,multica
+
+  layer1-content-review:
+    name: Layer 1 · content-review
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Invoke content-review via Linear and Multica
+        env:
+          MULTICA_API_KEY: ${{ secrets.MULTICA_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/invoke_multica_review.py \
+            --agent content-review \
+            --pr ${{ github.event.pull_request.number }} \
+            --author-kind ${{ github.event.pull_request.user.login == 'BenjiMbugua' && 'human' || 'multica' }} \
+            --blocking-for multica
+
+  layer1-perf-review:
+    name: Layer 1 · perf-review (Jarvis-direct, DeepSeek)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Invoke perf-review via DeepSeek
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "::warning::DEEPSEEK_API_KEY not configured — perf-review skipped (Day 2 prereq)"
+            exit 0
+          fi
+          if [ ! -f .github/scripts/perf_review.py ]; then
+            echo "::warning::.github/scripts/perf_review.py is not present yet — perf-review skipped (Day 2 prereq)"
+            exit 0
+          fi
+          python3 .github/scripts/perf_review.py \
+            --pr ${{ github.event.pull_request.number }} \
+            --author-kind ${{ github.event.pull_request.user.login == 'BenjiMbugua' && 'human' || 'multica' }} \
+            --blocking-for multica
+
+  layer2-lucious:
+    name: Layer 2 · Lucious (apex)
+    runs-on: self-hosted
+    needs: [layer1-sec-review, layer1-content-review, layer1-perf-review]
+    permissions:
+      contents: write      # gh pr merge --squash --delete-branch
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Invoke Lucious via Linear and Multica
+        id: lucious
+        env:
+          MULTICA_API_KEY: ${{ secrets.MULTICA_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/invoke_multica_review.py \
+            --agent lucious \
+            --pr ${{ github.event.pull_request.number }} \
+            --author-kind ${{ github.event.pull_request.user.login == 'BenjiMbugua' && 'human' || 'multica' }} \
+            --blocking-for human,multica \
+            --apex
+
+      - name: Auto-merge on APPROVE
+        if: steps.lucious.outputs.verdict == 'APPROVED'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch
