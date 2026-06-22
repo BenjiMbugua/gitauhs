@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta & OG Tags
  * Description: Adds meta description, Open Graph, and Twitter Card tags site-wide.
- * Version: 1.2
+ * Version: 1.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -13,6 +13,11 @@ $GLOBALS['jarvis_page_descriptions'] = [
     21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
 ];
 
+// Per-page custom meta descriptions (keyed by post slug — used when post ID is not in the map above).
+$GLOBALS['jarvis_slug_descriptions'] = [
+    'about' => 'Gitau Healthcare Services — compassionate adult family home care in Lakewood, WA. Skilled staff, personalized plans, and a nurturing environment for seniors.',
+];
+
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url( '/' );
@@ -20,7 +25,9 @@ function jarvis_seo_meta_tags(): void {
 
     if ( is_singular() ) {
         $post_id     = get_the_ID();
-        $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
+        $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ]
+            ?? $GLOBALS['jarvis_slug_descriptions'][ get_post_field( 'post_name', $post_id ) ]
+            ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
         $description = $custom_desc
             ?: ( has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' ) );
