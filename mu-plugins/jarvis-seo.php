@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Jarvis SEO — Meta & OG Tags
- * Description: Adds meta description, Open Graph, and Twitter Card tags site-wide.
- * Version: 1.2
+ * Description: Adds meta description, Open Graph, Twitter Card tags, and JSON-LD structured data site-wide.
+ * Version: 1.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -75,3 +75,89 @@ function jarvis_seo_meta_tags(): void {
     echo '<meta name="twitter:image" content="' . $image . '">' . "\n";
 }
 add_action( 'wp_head', 'jarvis_seo_meta_tags', 5 );
+
+function jarvis_json_ld(): void {
+    $site_name = get_bloginfo( 'name' );
+    $site_url  = rtrim( home_url( '/' ), '/' );
+    $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
+
+    $schemas = [];
+
+    // NursingHome/Organization entity — present on every page for GEO entity disambiguation
+    $schemas[] = [
+        '@context'    => 'https://schema.org',
+        '@type'       => 'NursingHome',
+        '@id'         => $site_url . '/#organization',
+        'name'        => $site_name,
+        'url'         => $site_url . '/',
+        'logo'        => [
+            '@type' => 'ImageObject',
+            'url'   => $logo_url,
+        ],
+        'description' => 'Gitau Healthcare is a licensed adult family home in Lakewood, WA providing personalised Memory Care, High Acuity Care, and Medication Management.',
+        'telephone'   => '(253) 905-7452',
+        'address'     => [
+            '@type'           => 'PostalAddress',
+            'addressLocality' => 'Lakewood',
+            'addressRegion'   => 'WA',
+            'addressCountry'  => 'US',
+        ],
+    ];
+
+    if ( is_home() || is_front_page() ) {
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'WebSite',
+            '@id'         => $site_url . '/#website',
+            'url'         => $site_url . '/',
+            'name'        => $site_name,
+            'description' => get_bloginfo( 'description' ) ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.',
+            'publisher'   => [ '@id' => $site_url . '/#organization' ],
+        ];
+
+    } elseif ( is_singular() ) {
+        $permalink = get_permalink();
+        $title     = get_the_title();
+
+        $schemas[] = [
+            '@context'        => 'https://schema.org',
+            '@type'           => 'BreadcrumbList',
+            'itemListElement' => [
+                [
+                    '@type'    => 'ListItem',
+                    'position' => 1,
+                    'name'     => 'Home',
+                    'item'     => $site_url . '/',
+                ],
+                [
+                    '@type'    => 'ListItem',
+                    'position' => 2,
+                    'name'     => $title,
+                    'item'     => $permalink,
+                ],
+            ],
+        ];
+
+        if ( is_page( 'about' ) ) {
+            $desc = $GLOBALS['jarvis_page_descriptions'][ get_the_ID() ] ?? '';
+            $schemas[] = [
+                '@context'    => 'https://schema.org',
+                '@type'       => 'AboutPage',
+                '@id'         => $permalink . '#webpage',
+                'url'         => $permalink,
+                'name'        => $title . ' | ' . $site_name,
+                'description' => $desc,
+                'isPartOf'    => [ '@id' => $site_url . '/#website' ],
+                'about'       => [ '@id' => $site_url . '/#organization' ],
+            ];
+        }
+    }
+
+    foreach ( $schemas as $schema ) {
+        echo '<script type="application/ld+json">' . "\n";
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_json_encode output is safe JSON
+        echo wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE );
+        echo "\n</script>\n";
+    }
+}
+add_action( 'wp_head', 'jarvis_json_ld', 6 );
