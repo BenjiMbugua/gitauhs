@@ -132,6 +132,28 @@ function jarvis_seo_json_ld(): void {
                 'name'     => get_the_title(),
                 'item'     => get_permalink(),
             ];
+
+            if ( is_singular( 'post' ) ) {
+                $author_id = (int) get_post_field( 'post_author' );
+                $schemas[] = [
+                    '@context'      => 'https://schema.org',
+                    '@type'         => 'Article',
+                    'headline'      => get_the_title(),
+                    'url'           => get_permalink(),
+                    'datePublished' => get_the_date( 'c' ),
+                    'dateModified'  => get_the_modified_date( 'c' ),
+                    'author'        => [
+                        '@type' => 'Person',
+                        'name'  => get_the_author_meta( 'display_name', $author_id ) ?: $site_name,
+                    ],
+                    'publisher' => [
+                        '@type' => 'Organization',
+                        'name'  => $site_name,
+                        'logo'  => [ '@type' => 'ImageObject', 'url' => $logo_url ],
+                    ],
+                    'image' => get_the_post_thumbnail_url( null, 'large' ) ?: $logo_url,
+                ];
+            }
         } elseif ( is_category() || is_tag() || is_tax() ) {
             $term    = get_queried_object();
             $items[] = [
