@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Jarvis SEO — Meta & OG Tags
- * Description: Adds meta description, Open Graph, and Twitter Card tags site-wide.
- * Version: 1.2
+ * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
+ * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
+ * Version: 1.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -75,3 +75,130 @@ function jarvis_seo_meta_tags(): void {
     echo '<meta name="twitter:image" content="' . $image . '">' . "\n";
 }
 add_action( 'wp_head', 'jarvis_seo_meta_tags', 5 );
+
+function jarvis_seo_json_ld(): void {
+    $site_name = get_bloginfo( 'name' ) ?: 'Gitau Healthcare Services';
+    $site_url  = home_url( '/' );
+    $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
+    $schemas   = [];
+
+    $organization = [
+        '@context'    => 'https://schema.org',
+        '@type'       => [ 'LocalBusiness', 'MedicalOrganization' ],
+        'name'        => $site_name,
+        'description' => 'Personalised, compassionate senior care in a secure, welcoming adult family home environment in Lakewood, WA.',
+        'url'         => $site_url,
+        'telephone'   => '(253) 905-7452',
+        'image'       => $logo_url,
+        'address'     => [
+            '@type'           => 'PostalAddress',
+            'addressLocality' => 'Lakewood',
+            'addressRegion'   => 'WA',
+            'addressCountry'  => 'US',
+        ],
+        'areaServed'  => [
+            '@type' => 'State',
+            'name'  => 'Washington',
+        ],
+    ];
+
+    if ( is_home() || is_front_page() ) {
+        $schemas[] = $organization;
+
+    } elseif ( is_category() || is_tag() || is_tax() ) {
+        $term      = get_queried_object();
+        $term_name = $term ? $term->name : 'Archive';
+        $term_desc = $term ? wp_strip_all_tags( $term->description ) : '';
+        $term_url  = $term ? (string) get_term_link( $term ) : home_url( '/' );
+
+        // CollectionPage gives search engines a typed anchor for the archive.
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'CollectionPage',
+            'name'        => $term_name . ' | ' . $site_name,
+            'description' => $term_desc
+                ?: 'Articles and resources about ' . $term_name . ' from ' . $site_name . '.',
+            'url'         => $term_url,
+            'publisher'   => [
+                '@type' => 'Organization',
+                'name'  => $site_name,
+                'logo'  => [ '@type' => 'ImageObject', 'url' => $logo_url ],
+            ],
+        ];
+
+        // Organization on archive pages helps GEO citation.
+        $schemas[] = $organization;
+
+    } elseif ( is_singular( 'post' ) ) {
+        $author_id = (int) get_post_field( 'post_author' );
+        $schemas[] = [
+            '@context'      => 'https://schema.org',
+            '@type'         => 'Article',
+            'headline'      => get_the_title(),
+            'url'           => get_permalink(),
+            'datePublished' => get_the_date( 'c' ),
+            'dateModified'  => get_the_modified_date( 'c' ),
+            'author'        => [
+                '@type' => 'Person',
+                'name'  => get_the_author_meta( 'display_name', $author_id ) ?: $site_name,
+            ],
+            'publisher'     => [
+                '@type' => 'Organization',
+                'name'  => $site_name,
+                'logo'  => [ '@type' => 'ImageObject', 'url' => $logo_url ],
+            ],
+            'image'         => get_the_post_thumbnail_url( null, 'large' ) ?: $logo_url,
+        ];
+    }
+
+    // BreadcrumbList for every page except the front page.
+    if ( ! is_front_page() ) {
+        $items    = [
+            [
+                '@type'    => 'ListItem',
+                'position' => 1,
+                'name'     => 'Home',
+                'item'     => $site_url,
+            ],
+        ];
+        $position = 2;
+
+        if ( is_singular() ) {
+            foreach ( array_reverse( get_post_ancestors( get_the_ID() ) ) as $ancestor_id ) {
+                $items[] = [
+                    '@type'    => 'ListItem',
+                    'position' => $position++,
+                    'name'     => get_the_title( $ancestor_id ),
+                    'item'     => get_permalink( $ancestor_id ),
+                ];
+            }
+            $items[] = [
+                '@type'    => 'ListItem',
+                'position' => $position,
+                'name'     => get_the_title(),
+                'item'     => get_permalink(),
+            ];
+        } elseif ( is_category() || is_tag() || is_tax() ) {
+            $term    = get_queried_object();
+            $items[] = [
+                '@type'    => 'ListItem',
+                'position' => $position,
+                'name'     => $term ? $term->name : 'Archive',
+                'item'     => $term ? (string) get_term_link( $term ) : home_url( '/' ),
+            ];
+        }
+
+        $schemas[] = [
+            '@context'        => 'https://schema.org',
+            '@type'           => 'BreadcrumbList',
+            'itemListElement' => $items,
+        ];
+    }
+
+    foreach ( $schemas as $schema ) {
+        echo '<script type="application/ld+json">'
+            . wp_json_encode( $schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+            . '</script>' . "\n";
+    }
+}
+add_action( 'wp_head', 'jarvis_seo_json_ld', 6 );
