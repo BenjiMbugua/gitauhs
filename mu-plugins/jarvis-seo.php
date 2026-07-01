@@ -84,7 +84,7 @@ function jarvis_seo_json_ld(): void {
 
     $organization = [
         '@context'    => 'https://schema.org',
-        '@type'       => [ 'NursingHome', 'MedicalOrganization', 'LocalBusiness' ],
+        '@type'       => [ 'MedicalOrganization', 'LocalBusiness' ],
         '@id'         => $site_url . '#organization',
         'name'        => $site_name,
         'description' => 'Personalised, compassionate senior care in a secure, welcoming adult family home environment in Lakewood, WA.',
@@ -174,7 +174,7 @@ function jarvis_seo_json_ld(): void {
                 'itemListElement' => [
                     jarvis_seo_service_offer( 'Memory Care', 'Personalised care for residents with memory-care needs.' ),
                     jarvis_seo_service_offer( 'High Acuity Care', 'Support for residents with higher daily care needs.' ),
-                    jarvis_seo_service_offer( 'Medication Management', 'Medication support as part of individualized resident care plans.' ),
+                    jarvis_seo_service_offer( 'Medication Management', 'Medication support as part of individualised resident care plans.' ),
                     jarvis_seo_service_offer( 'Specialised Dining', 'Dining support and meal accommodations for resident needs.' ),
                 ],
             ],
