@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.4
+ * Version: 1.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -84,7 +84,8 @@ function jarvis_seo_json_ld(): void {
 
     $organization = [
         '@context'    => 'https://schema.org',
-        '@type'       => [ 'LocalBusiness', 'MedicalOrganization' ],
+        '@type'       => [ 'NursingHome', 'MedicalOrganization', 'LocalBusiness' ],
+        '@id'         => $site_url . '#organization',
         'name'        => $site_name,
         'description' => 'Personalised, compassionate senior care in a secure, welcoming adult family home environment in Lakewood, WA.',
         'url'         => $site_url,
@@ -104,6 +105,16 @@ function jarvis_seo_json_ld(): void {
 
     if ( is_home() || is_front_page() ) {
         $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'WebSite',
+            '@id'         => $site_url . '#website',
+            'name'        => $site_name,
+            'url'         => $site_url,
+            'description' => get_bloginfo( 'description' )
+                ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.',
+            'publisher'   => [ '@id' => $site_url . '#organization' ],
+        ];
 
     } elseif ( is_category() || is_tag() || is_tax() ) {
         $term      = get_queried_object();
@@ -129,7 +140,48 @@ function jarvis_seo_json_ld(): void {
         // Organization on archive pages helps GEO citation.
         $schemas[] = $organization;
 
+    } elseif ( is_page( 'about' ) || is_page( 'about-us' ) ) {
+        $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'AboutPage',
+            '@id'         => get_permalink() . '#webpage',
+            'url'         => get_permalink(),
+            'name'        => get_the_title() . ' | ' . $site_name,
+            'description' => $GLOBALS['jarvis_page_descriptions'][ get_the_ID() ]
+                ?? 'Learn about Gitau Healthcare and its adult family home care services in Lakewood, Washington.',
+            'isPartOf'    => [ '@id' => $site_url . '#website' ],
+            'about'       => [ '@id' => $site_url . '#organization' ],
+        ];
+
+    } elseif ( is_page( 'services' ) ) {
+        $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'Service',
+            'name'        => 'Adult Family Home Care Services',
+            'url'         => get_permalink(),
+            'description' => $GLOBALS['jarvis_page_descriptions'][ get_the_ID() ]
+                ?? 'Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities from Gitau Healthcare.',
+            'provider'    => [ '@id' => $site_url . '#organization' ],
+            'areaServed'  => [
+                '@type' => 'State',
+                'name'  => 'Washington',
+            ],
+            'hasOfferCatalog' => [
+                '@type' => 'OfferCatalog',
+                'name'  => 'Gitau Healthcare Services',
+                'itemListElement' => [
+                    jarvis_seo_service_offer( 'Memory Care', 'Personalised care for residents with memory-care needs.' ),
+                    jarvis_seo_service_offer( 'High Acuity Care', 'Support for residents with higher daily care needs.' ),
+                    jarvis_seo_service_offer( 'Medication Management', 'Medication support as part of individualized resident care plans.' ),
+                    jarvis_seo_service_offer( 'Specialised Dining', 'Dining support and meal accommodations for resident needs.' ),
+                ],
+            ],
+        ];
+
     } elseif ( is_singular( 'post' ) ) {
+        $schemas[] = $organization;
         $author_id = (int) get_post_field( 'post_author' );
         $schemas[] = [
             '@context'      => 'https://schema.org',
@@ -202,3 +254,37 @@ function jarvis_seo_json_ld(): void {
     }
 }
 add_action( 'wp_head', 'jarvis_seo_json_ld', 6 );
+
+function jarvis_seo_service_offer( string $name, string $description ): array {
+    return [
+        '@type'       => 'Offer',
+        'itemOffered' => [
+            '@type'       => 'Service',
+            'name'        => $name,
+            'description' => $description,
+        ],
+    ];
+}
+
+function jarvis_seo_inject_h1_css(): void {
+    if ( ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) ) ) {
+        return;
+    }
+
+    echo '<style>.jarvis-sr-h1{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}</style>' . "\n";
+}
+add_action( 'wp_head', 'jarvis_seo_inject_h1_css', 7 );
+
+function jarvis_seo_inject_h1_content( string $content ): string {
+    if (
+        ! is_main_query()
+        || ! in_the_loop()
+        || ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) )
+    ) {
+        return $content;
+    }
+
+    $h1 = '<h1 class="jarvis-sr-h1">' . esc_html( get_the_title() ) . '</h1>';
+    return $h1 . $content;
+}
+add_filter( 'the_content', 'jarvis_seo_inject_h1_content' );
