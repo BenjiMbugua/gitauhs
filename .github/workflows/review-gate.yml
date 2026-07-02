@@ -116,8 +116,25 @@ jobs:
             --apex
 
       - name: Auto-merge on APPROVE
+        id: merge
         if: steps.lucious.outputs.verdict == 'APPROVED'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch
+          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch \
+            && echo "merged=true" >> "$GITHUB_OUTPUT" \
+            || echo "merged=false" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to VPS
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JARVIS_CONFIG: ${{ env.JARVIS_CONFIG }}
+          JARVIS_URL: ${{ vars.JARVIS_URL || 'http://localhost:8090' }}
+          JARVIS_DEPLOY_TOKEN: ${{ secrets.JARVIS_DEPLOY_TOKEN }}
+        run: |
+          python3 .github/scripts/post_merge_deploy.py \
+            --pr ${{ github.event.pull_request.number }} \
+            --config "${{ env.JARVIS_CONFIG }}" \
+            --actor review-gate \
+            --ref main
