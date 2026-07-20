@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -275,16 +275,72 @@ function jarvis_seo_inject_h1_css(): void {
 }
 add_action( 'wp_head', 'jarvis_seo_inject_h1_css', 7 );
 
-function jarvis_seo_inject_h1_content( string $content ): string {
-    if (
-        ! is_main_query()
-        || ! in_the_loop()
-        || ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) )
-    ) {
-        return $content;
+/**
+ * Guarantee exactly one H1 on the headless-heading pages.
+ *
+ * These pages are built entirely from Elementor widgets, so the page title
+ * never passes through `the_content()` — filtering the content is not enough
+ * (WEZ-753: /contact-us/ still rendered with h1_count = 0). Buffering the
+ * rendered document instead is Elementor-agnostic and idempotent: if the page
+ * already has an H1 we leave it alone, otherwise we promote the Elementor
+ * heading that already shows the page title, and only fall back to a
+ * screen-reader-only H1 when there is nothing to promote.
+ */
+function jarvis_seo_h1_target_page(): bool {
+    return is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' );
+}
+
+function jarvis_seo_start_h1_buffer(): void {
+    if ( is_admin() || is_feed() || is_embed() || ! jarvis_seo_h1_target_page() ) {
+        return;
     }
 
-    $h1 = '<h1 class="jarvis-sr-h1">' . esc_html( get_the_title() ) . '</h1>';
-    return $h1 . $content;
+    // Capture the title now: the buffer callback runs at shutdown, by which
+    // point the loop state is no longer reliable.
+    $GLOBALS['jarvis_seo_h1_title'] = get_the_title( get_queried_object_id() );
+
+    ob_start( 'jarvis_seo_ensure_h1' );
 }
-add_filter( 'the_content', 'jarvis_seo_inject_h1_content' );
+add_action( 'template_redirect', 'jarvis_seo_start_h1_buffer', 1 );
+
+function jarvis_seo_ensure_h1( string $html ): string {
+    // Already compliant — never emit a second H1.
+    if ( preg_match( '/<h1[\s>]/i', $html ) ) {
+        return $html;
+    }
+
+    $title = (string) ( $GLOBALS['jarvis_seo_h1_title'] ?? '' );
+    if ( '' === $title ) {
+        return $html;
+    }
+
+    // Preferred: retag the visible Elementor heading that already carries the
+    // page title. Elementor styles headings by class, not by tag, so this is a
+    // semantic change only.
+    // $2 replays the heading's own text so the rendered casing is untouched —
+    // this is a tag swap and nothing else.
+    $promoted = preg_replace(
+        '/<h2(\s[^>]*class="[^"]*elementor-heading-title[^"]*"[^>]*)>(\s*'
+            . preg_quote( esc_html( $title ), '/' )
+            . '\s*)<\/h2>/i',
+        '<h1$1>$2</h1>',
+        $html,
+        1,
+        $count
+    );
+
+    if ( $count > 0 && null !== $promoted ) {
+        return $promoted;
+    }
+
+    // Fallback: screen-reader-only H1 immediately after <body>.
+    $injected = preg_replace(
+        '/(<body[^>]*>)/i',
+        '$1<h1 class="jarvis-sr-h1">' . esc_html( $title ) . '</h1>',
+        $html,
+        1,
+        $fallback_count
+    );
+
+    return ( $fallback_count > 0 && null !== $injected ) ? $injected : $html;
+}
