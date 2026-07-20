@@ -2,16 +2,60 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Below this length a meta description reads as thin to search engines (WEZ-759).
+const JARVIS_SEO_DESC_MIN = 70;
+
+// Ceiling for a padded description, so padding can never overshoot.
+const JARVIS_SEO_DESC_MAX = 160;
+
+// Site-wide fallback copy, reused as padding for thin posts.
+const JARVIS_SEO_DEFAULT_DESC = 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
 
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
     20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled, compassionate staff and individualized care plans tailored to every resident.',
     21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
 ];
+
+/**
+ * Pad a derived description up to a usable length.
+ *
+ * A post with no excerpt and a short body (e.g. /test-post-title-2/, 17 chars)
+ * otherwise emits that body verbatim as the meta description. Append the site
+ * blurb when the text is too thin, then cap on a word boundary so padding can
+ * never push it past the 160-char budget.
+ */
+function jarvis_seo_pad_description( string $description ): string {
+    $description = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $description ) ) );
+
+    if ( mb_strlen( $description ) < JARVIS_SEO_DESC_MIN ) {
+        $description = $description === ''
+            ? JARVIS_SEO_DEFAULT_DESC
+            : rtrim( $description, ' .…' ) . '. ' . JARVIS_SEO_DEFAULT_DESC;
+    }
+
+    if ( mb_strlen( $description ) <= JARVIS_SEO_DESC_MAX ) {
+        return $description;
+    }
+
+    // Rebuild word by word: mb_strrpos has no core polyfill, and byte offsets
+    // from strrpos would cut multibyte characters (the blurb contains an em dash).
+    $capped = '';
+    foreach ( explode( ' ', $description ) as $word ) {
+        $candidate = $capped === '' ? $word : $capped . ' ' . $word;
+        if ( mb_strlen( $candidate ) > JARVIS_SEO_DESC_MAX - 1 ) {
+            break;
+        }
+        $capped = $candidate;
+    }
+
+    return rtrim( $capped, ' ,;:—-' ) . '…';
+}
 
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
@@ -23,7 +67,9 @@ function jarvis_seo_meta_tags(): void {
         $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
         $description = $custom_desc
-            ?: ( has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' ) );
+            ?: jarvis_seo_pad_description(
+                has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' )
+            );
         $url         = get_permalink();
         $image       = get_the_post_thumbnail_url( null, 'large' ) ?: $logo_url;
         $type        = 'article';
