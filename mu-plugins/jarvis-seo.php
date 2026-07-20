@@ -2,16 +2,99 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// SERP truncation budgets (WEZ-751).
+const JARVIS_SEO_TITLE_MAX    = 65;
+const JARVIS_SEO_DESC_MAX     = 160;
+// Below this, the site-name suffix is dropped rather than starving the page title.
+const JARVIS_SEO_TITLE_MIN    = 20;
+const JARVIS_SEO_TITLE_SEP    = ' – ';
 
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
     20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled, compassionate staff and individualized care plans tailored to every resident.',
     21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
 ];
+
+/**
+ * Collapse entities and whitespace, then clip to $max chars on a word boundary.
+ * Multibyte-safe: titles and excerpts on this site contain accented characters,
+ * so a byte-wise substr would cut mid-codepoint.
+ */
+function jarvis_seo_clip( string $text, int $max ): string {
+    $text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+    // html_entity_decode turns &nbsp; into U+00A0, which \s does not match.
+    $text = trim( preg_replace( '/[\s\x{00A0}]+/u', ' ', $text ) );
+
+    if ( mb_strlen( $text, 'UTF-8' ) <= $max ) {
+        return $text;
+    }
+
+    // Reserve one char for the ellipsis.
+    $clipped = mb_substr( $text, 0, $max - 1, 'UTF-8' );
+    $space   = mb_strrpos( $clipped, ' ', 0, 'UTF-8' );
+    if ( false !== $space && $space >= (int) ( $max / 2 ) ) {
+        $clipped = mb_substr( $clipped, 0, $space, 'UTF-8' );
+    }
+
+    return rtrim( $clipped, " \t\n\r\0\x0B.,;:–—-" ) . '…';
+}
+
+/**
+ * Build a "<page> – <site>" title that fits JARVIS_SEO_TITLE_MAX.
+ * Drops the site-name suffix entirely when keeping it would leave the page
+ * title unreadably short.
+ */
+function jarvis_seo_build_title( string $page_title, string $site_name ): string {
+    $page_title = jarvis_seo_clip( $page_title, JARVIS_SEO_TITLE_MAX );
+    $site_name  = jarvis_seo_clip( $site_name, JARVIS_SEO_TITLE_MAX );
+
+    if ( '' === $site_name ) {
+        return $page_title;
+    }
+
+    $suffix_len = mb_strlen( JARVIS_SEO_TITLE_SEP . $site_name, 'UTF-8' );
+    $budget     = JARVIS_SEO_TITLE_MAX - $suffix_len;
+
+    if ( $budget < JARVIS_SEO_TITLE_MIN ) {
+        return $page_title;
+    }
+
+    return jarvis_seo_clip( $page_title, $budget ) . JARVIS_SEO_TITLE_SEP . $site_name;
+}
+
+/**
+ * WP core builds the <title> from the raw post title, which overflows SERP on
+ * long posts. Rebuild it through the same budget used for og:title.
+ */
+function jarvis_seo_document_title( $title ) {
+    $site_name = (string) get_bloginfo( 'name' );
+
+    if ( is_front_page() || is_home() ) {
+        $tagline = (string) get_bloginfo( 'description' );
+        return $tagline
+            ? jarvis_seo_build_title( $site_name, $tagline )
+            : jarvis_seo_clip( $site_name, JARVIS_SEO_TITLE_MAX );
+    }
+
+    if ( is_singular() ) {
+        return jarvis_seo_build_title( (string) get_the_title(), $site_name );
+    }
+
+    if ( is_category() || is_tag() || is_tax() ) {
+        $term = get_queried_object();
+        if ( $term && ! empty( $term->name ) ) {
+            return jarvis_seo_build_title( (string) $term->name, $site_name );
+        }
+    }
+
+    return is_string( $title ) ? jarvis_seo_clip( $title, JARVIS_SEO_TITLE_MAX ) : $title;
+}
+add_filter( 'pre_get_document_title', 'jarvis_seo_document_title', 20 );
 
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
@@ -21,7 +104,7 @@ function jarvis_seo_meta_tags(): void {
     if ( is_singular() ) {
         $post_id     = get_the_ID();
         $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
-        $title       = get_the_title() . ' | ' . $site_name;
+        $title       = jarvis_seo_build_title( (string) get_the_title(), $site_name );
         $description = $custom_desc
             ?: ( has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' ) );
         $url         = get_permalink();
@@ -32,7 +115,9 @@ function jarvis_seo_meta_tags(): void {
         $term        = get_queried_object();
         $term_name   = $term ? $term->name : '';
         $term_desc   = $term ? wp_strip_all_tags( $term->description ) : '';
-        $title       = ( $term_name ? $term_name . ' | ' : '' ) . $site_name;
+        $title       = $term_name
+            ? jarvis_seo_build_title( $term_name, $site_name )
+            : jarvis_seo_clip( $site_name, JARVIS_SEO_TITLE_MAX );
         $description = $term_desc
             ?: ( get_bloginfo( 'description' )
                 ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.' );
@@ -41,7 +126,7 @@ function jarvis_seo_meta_tags(): void {
         $type        = 'website';
 
     } elseif ( is_home() || is_front_page() ) {
-        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
+        $title       = jarvis_seo_build_title( $site_name, (string) get_bloginfo( 'description' ) );
         $description = get_bloginfo( 'description' )
             ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
         $url         = $site_url;
@@ -49,7 +134,7 @@ function jarvis_seo_meta_tags(): void {
         $type        = 'website';
 
     } else {
-        $title       = wp_get_document_title() ?: $site_name;
+        $title       = jarvis_seo_clip( wp_get_document_title() ?: $site_name, JARVIS_SEO_TITLE_MAX );
         $description = get_bloginfo( 'description' )
             ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
         $url         = esc_url( ( is_ssl() ? 'https' : 'http' ) . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] );
@@ -57,7 +142,7 @@ function jarvis_seo_meta_tags(): void {
         $type        = 'website';
     }
 
-    $description = esc_attr( wp_strip_all_tags( $description ) );
+    $description = esc_attr( jarvis_seo_clip( (string) $description, JARVIS_SEO_DESC_MAX ) );
     $title       = esc_attr( $title );
     $url         = esc_url( is_string( $url ) ? $url : '' );
     $image       = esc_url( $image );
