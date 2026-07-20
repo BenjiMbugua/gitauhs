@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -266,8 +266,25 @@ function jarvis_seo_service_offer( string $name, string $description ): array {
     ];
 }
 
+// Pages Elementor builds with h2/h3 only, leaving the document without an H1.
+function jarvis_seo_needs_h1(): bool {
+    return is_page( [ 'about', 'about-us', 'contact', 'contact-us' ] );
+}
+
+// Renders once per request; later call sites get an empty string.
+function jarvis_seo_h1_markup(): string {
+    if ( ! empty( $GLOBALS['jarvis_seo_h1_rendered'] ) ) {
+        return '';
+    }
+    $GLOBALS['jarvis_seo_h1_rendered'] = true;
+
+    // Resolve off the queried object: on wp_body_open the loop has not run yet,
+    // so get_the_title() with no argument would return the wrong post.
+    return '<h1 class="jarvis-sr-h1">' . esc_html( get_the_title( get_queried_object_id() ) ) . '</h1>';
+}
+
 function jarvis_seo_inject_h1_css(): void {
-    if ( ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) ) ) {
+    if ( ! jarvis_seo_needs_h1() ) {
         return;
     }
 
@@ -275,16 +292,23 @@ function jarvis_seo_inject_h1_css(): void {
 }
 add_action( 'wp_head', 'jarvis_seo_inject_h1_css', 7 );
 
+// Primary hook. Fires before the template renders, so the H1 lands even on
+// Elementor Theme Builder layouts that never pass through the_content.
+function jarvis_seo_inject_h1_body_open(): void {
+    if ( ! jarvis_seo_needs_h1() ) {
+        return;
+    }
+
+    echo jarvis_seo_h1_markup();
+}
+add_action( 'wp_body_open', 'jarvis_seo_inject_h1_body_open' );
+
+// Fallback for themes that never call wp_body_open().
 function jarvis_seo_inject_h1_content( string $content ): string {
-    if (
-        ! is_main_query()
-        || ! in_the_loop()
-        || ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) )
-    ) {
+    if ( ! is_main_query() || ! in_the_loop() || ! jarvis_seo_needs_h1() ) {
         return $content;
     }
 
-    $h1 = '<h1 class="jarvis-sr-h1">' . esc_html( get_the_title() ) . '</h1>';
-    return $h1 . $content;
+    return jarvis_seo_h1_markup() . $content;
 }
 add_filter( 'the_content', 'jarvis_seo_inject_h1_content' );
