@@ -13,6 +13,32 @@ $GLOBALS['jarvis_page_descriptions'] = [
     21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
 ];
 
+// Per-page custom meta descriptions keyed by slug, for pages whose ID isn't pinned above.
+$GLOBALS['jarvis_page_descriptions_by_slug'] = [
+    'contact-us' => 'Contact Gitau Healthcare Services in Lakewood, WA. Call (253) 905-7452 or email us about adult family home care for your loved one.',
+];
+
+const JARVIS_SEO_DESC_MAX = 160;
+
+/**
+ * Trim an auto-generated description to the search-result limit on a word
+ * boundary. Curated descriptions above are intentionally left untouched.
+ */
+function jarvis_seo_cap_description( string $desc ): string {
+    if ( mb_strlen( $desc ) <= JARVIS_SEO_DESC_MAX ) {
+        return $desc;
+    }
+
+    $trimmed = mb_substr( $desc, 0, JARVIS_SEO_DESC_MAX - 1 );
+    $space   = mb_strrpos( $trimmed, ' ' );
+
+    if ( false !== $space ) {
+        $trimmed = mb_substr( $trimmed, 0, $space );
+    }
+
+    return rtrim( $trimmed, " \t\n\r\0\x0B.,;:-" ) . '…';
+}
+
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url( '/' );
@@ -20,10 +46,17 @@ function jarvis_seo_meta_tags(): void {
 
     if ( is_singular() ) {
         $post_id     = get_the_ID();
-        $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
+        $slug        = (string) get_post_field( 'post_name', $post_id );
+        $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ]
+            ?? $GLOBALS['jarvis_page_descriptions_by_slug'][ $slug ]
+            ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
         $description = $custom_desc
-            ?: ( has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' ) );
+            ?: jarvis_seo_cap_description(
+                wp_strip_all_tags(
+                    has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '' )
+                )
+            );
         $url         = get_permalink();
         $image       = get_the_post_thumbnail_url( null, 'large' ) ?: $logo_url;
         $type        = 'article';
