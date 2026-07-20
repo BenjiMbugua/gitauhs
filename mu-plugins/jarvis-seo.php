@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
     20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled, compassionate staff and individualized care plans tailored to every resident.',
-    21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
+    21 => 'Memory care, high-acuity care, medication management, specialised dining and wheelchair-accessible rooms at Gitau Healthcare, Lakewood WA. Call (253) 905-7452.',
 ];
 
 function jarvis_seo_meta_tags(): void {
