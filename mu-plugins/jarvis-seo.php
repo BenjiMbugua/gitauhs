@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -266,8 +266,13 @@ function jarvis_seo_service_offer( string $name, string $description ): array {
     ];
 }
 
+// Pages whose Elementor templates render no H1 of their own.
+function jarvis_seo_needs_injected_h1(): bool {
+    return is_page( [ 'contact-us', 'contact', 'about', 'about-us', 'services' ] );
+}
+
 function jarvis_seo_inject_h1_css(): void {
-    if ( ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) ) ) {
+    if ( ! jarvis_seo_needs_injected_h1() ) {
         return;
     }
 
@@ -279,7 +284,7 @@ function jarvis_seo_inject_h1_content( string $content ): string {
     if (
         ! is_main_query()
         || ! in_the_loop()
-        || ! ( is_page( 'contact-us' ) || is_page( 'contact' ) || is_page( 'about' ) || is_page( 'about-us' ) )
+        || ! jarvis_seo_needs_injected_h1()
     ) {
         return $content;
     }
