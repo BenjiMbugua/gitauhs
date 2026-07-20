@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -89,7 +89,7 @@ function jarvis_seo_json_ld(): void {
         'name'        => $site_name,
         'description' => 'Personalised, compassionate senior care in a secure, welcoming adult family home environment in Lakewood, WA.',
         'url'         => $site_url,
-        'telephone'   => '(253) 905-7452',
+        'telephone'   => '+1-253-905-7452',
         'image'       => $logo_url,
         'address'     => [
             '@type'           => 'PostalAddress',
@@ -178,6 +178,26 @@ function jarvis_seo_json_ld(): void {
                     jarvis_seo_service_offer( 'Specialised Dining', 'Dining support and meal accommodations for resident needs.' ),
                 ],
             ],
+        ];
+
+    } elseif ( is_page( 'contact' ) || is_page( 'contact-us' ) ) {
+        $organization['contactPoint'] = [
+            '@type'             => 'ContactPoint',
+            'telephone'         => '+1-253-905-7452',
+            'contactType'       => 'customer service',
+            'areaServed'        => 'US',
+            'availableLanguage' => 'English',
+        ];
+        $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'ContactPage',
+            '@id'         => get_permalink() . '#webpage',
+            'url'         => get_permalink(),
+            'name'        => get_the_title() . ' | ' . $site_name,
+            'description' => 'Contact Gitau Healthcare Services in Lakewood, WA to ask about adult family home care or arrange a tour.',
+            'isPartOf'    => [ '@id' => $site_url . '#website' ],
+            'about'       => [ '@id' => $site_url . '#organization' ],
         ];
 
     } elseif ( is_singular( 'post' ) ) {
