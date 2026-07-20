@@ -2,23 +2,61 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+// Meta descriptions must stay at or below this length (WEZ-760).
+const JARVIS_SEO_DESC_MAX = 160;
+
+// Site-wide fallback description, also used for the front page.
+const JARVIS_SEO_DEFAULT_DESC = 'Compassionate Adult Family Home care by Gitau Healthcare Services. Personalized support for your loved ones in a safe, nurturing environment.';
+
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
-    20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled, compassionate staff and individualized care plans tailored to every resident.',
-    21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
+    20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled staff and individual care plans for every resident.',
+    21 => 'Memory care, high acuity care, medication management, specialised dining and wheelchair-accessible rooms at our Lakewood, WA adult family home.',
 ];
+
+/**
+ * Trim a description to JARVIS_SEO_DESC_MAX on a word boundary.
+ *
+ * Anything reaching the <meta> tags goes through here, so a long excerpt or a
+ * future hand-written description can never re-open WEZ-760.
+ */
+function jarvis_seo_clamp_description( string $desc, int $max = JARVIS_SEO_DESC_MAX ): string {
+    $desc = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $desc ) ) );
+
+    if ( mb_strlen( $desc ) <= $max ) {
+        return $desc;
+    }
+
+    // Leave room for the ellipsis, then fall back to the last whole word.
+    $desc = mb_substr( $desc, 0, $max - 1 );
+    $space = mb_strrpos( $desc, ' ' );
+    if ( false !== $space ) {
+        $desc = mb_substr( $desc, 0, $space );
+    }
+
+    return rtrim( $desc, " \t\n\r\0\x0B.,;:—-" ) . '…';
+}
 
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url( '/' );
     $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
 
-    if ( is_singular() ) {
+    // Front page first: with a static front page it is also is_singular(), and
+    // the singular branch would scrape the description out of the page content.
+    if ( is_home() || is_front_page() ) {
+        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
+        $description = JARVIS_SEO_DEFAULT_DESC;
+        $url         = $site_url;
+        $image       = $logo_url;
+        $type        = 'website';
+
+    } elseif ( is_singular() ) {
         $post_id     = get_the_ID();
         $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
@@ -33,31 +71,20 @@ function jarvis_seo_meta_tags(): void {
         $term_name   = $term ? $term->name : '';
         $term_desc   = $term ? wp_strip_all_tags( $term->description ) : '';
         $title       = ( $term_name ? $term_name . ' | ' : '' ) . $site_name;
-        $description = $term_desc
-            ?: ( get_bloginfo( 'description' )
-                ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.' );
+        $description = $term_desc ?: ( get_bloginfo( 'description' ) ?: JARVIS_SEO_DEFAULT_DESC );
         $url         = $term ? get_term_link( $term ) : esc_url( home_url( $_SERVER['REQUEST_URI'] ) );
-        $image       = $logo_url;
-        $type        = 'website';
-
-    } elseif ( is_home() || is_front_page() ) {
-        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
-        $description = get_bloginfo( 'description' )
-            ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
-        $url         = $site_url;
         $image       = $logo_url;
         $type        = 'website';
 
     } else {
         $title       = wp_get_document_title() ?: $site_name;
-        $description = get_bloginfo( 'description' )
-            ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
+        $description = get_bloginfo( 'description' ) ?: JARVIS_SEO_DEFAULT_DESC;
         $url         = esc_url( ( is_ssl() ? 'https' : 'http' ) . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] );
         $image       = $logo_url;
         $type        = 'website';
     }
 
-    $description = esc_attr( wp_strip_all_tags( $description ) );
+    $description = esc_attr( jarvis_seo_clamp_description( $description ) );
     $title       = esc_attr( $title );
     $url         = esc_url( is_string( $url ) ? $url : '' );
     $image       = esc_url( $image );
@@ -111,8 +138,7 @@ function jarvis_seo_json_ld(): void {
             '@id'         => $site_url . '#website',
             'name'        => $site_name,
             'url'         => $site_url,
-            'description' => get_bloginfo( 'description' )
-                ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.',
+            'description' => JARVIS_SEO_DEFAULT_DESC,
             'publisher'   => [ '@id' => $site_url . '#organization' ],
         ];
 
