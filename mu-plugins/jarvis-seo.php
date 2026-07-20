@@ -9,16 +9,62 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
-    20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — skilled, compassionate staff and individualized care plans tailored to every resident.',
-    21 => 'Explore Gitau Healthcare\'s comprehensive services: Memory Care, High Acuity Care, Medication Management, specialised dining, wheelchair-accessible rooms, and memory-care amenities. Compassionate care tailored to every resident. Call (253) 905-7452.',
+    20 => 'Personalized senior care at Gitau Healthcare\'s adult family home in Lakewood, WA — compassionate staff and individualized care plans for every resident.',
+    21 => 'Memory Care, High Acuity Care, Medication Management, specialised dining and accessible rooms at Gitau Healthcare, Lakewood WA. Call (253) 905-7452.',
 ];
+
+// Google truncates meta descriptions past ~160 characters.
+const JARVIS_SEO_DESC_MAX = 160;
+
+/**
+ * The curated homepage description, shared with jarvis-meta-fix.php (WEZ-638).
+ */
+function jarvis_seo_home_description(): string {
+    if ( defined( 'GITAUHS_HOME_META_DESC' ) ) {
+        return GITAUHS_HOME_META_DESC;
+    }
+
+    return 'Compassionate Adult Family Home care by Gitau Healthcare Services. Personalized support for your loved ones in a safe, nurturing environment.';
+}
+
+/**
+ * Strip markup and keep the description within JARVIS_SEO_DESC_MAX characters,
+ * cutting on a word boundary rather than mid-word.
+ */
+function jarvis_seo_clamp_description( string $description ): string {
+    $description = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $description ) ) );
+
+    if ( mb_strlen( $description ) <= JARVIS_SEO_DESC_MAX ) {
+        return $description;
+    }
+
+    // Reserve one character for the ellipsis.
+    $truncated = mb_substr( $description, 0, JARVIS_SEO_DESC_MAX - 1 );
+    $last_space = mb_strrpos( $truncated, ' ' );
+
+    if ( false !== $last_space && $last_space > 0 ) {
+        $truncated = mb_substr( $truncated, 0, $last_space );
+    }
+
+    return rtrim( $truncated, " \t\n\r\0\x0B.,;:-" ) . '…';
+}
 
 function jarvis_seo_meta_tags(): void {
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url( '/' );
     $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
 
-    if ( is_singular() ) {
+    // Front page first: a static front page is also singular, so testing
+    // is_singular() ahead of it would fall through to the trimmed-content
+    // description (WEZ-758).
+    if ( is_home() || is_front_page() ) {
+        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
+        $description = jarvis_seo_home_description();
+        $url         = $site_url;
+        $image       = $logo_url;
+        $type        = 'website';
+
+    } elseif ( is_singular() ) {
         $post_id     = get_the_ID();
         $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
@@ -40,14 +86,6 @@ function jarvis_seo_meta_tags(): void {
         $image       = $logo_url;
         $type        = 'website';
 
-    } elseif ( is_home() || is_front_page() ) {
-        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
-        $description = get_bloginfo( 'description' )
-            ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
-        $url         = $site_url;
-        $image       = $logo_url;
-        $type        = 'website';
-
     } else {
         $title       = wp_get_document_title() ?: $site_name;
         $description = get_bloginfo( 'description' )
@@ -57,7 +95,7 @@ function jarvis_seo_meta_tags(): void {
         $type        = 'website';
     }
 
-    $description = esc_attr( wp_strip_all_tags( $description ) );
+    $description = esc_attr( jarvis_seo_clamp_description( $description ) );
     $title       = esc_attr( $title );
     $url         = esc_url( is_string( $url ) ? $url : '' );
     $image       = esc_url( $image );
