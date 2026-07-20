@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -18,7 +18,20 @@ function jarvis_seo_meta_tags(): void {
     $site_url  = home_url( '/' );
     $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
 
-    if ( is_singular() ) {
+    // Front page first: it is also is_singular() when a static page is assigned,
+    // and the singular branch would otherwise give it og:type=article plus an
+    // auto-trimmed description scraped from the Elementor hero.
+    if ( is_home() || is_front_page() ) {
+        $tagline     = get_bloginfo( 'description' );
+        $title       = $tagline ? $site_name . ' | ' . $tagline : $site_name;
+        $description = defined( 'GITAUHS_HOME_META_DESC' )
+            ? GITAUHS_HOME_META_DESC
+            : 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
+        $url         = $site_url;
+        $image       = $logo_url;
+        $type        = 'website';
+
+    } elseif ( is_singular() ) {
         $post_id     = get_the_ID();
         $custom_desc = $GLOBALS['jarvis_page_descriptions'][ $post_id ] ?? '';
         $title       = get_the_title() . ' | ' . $site_name;
@@ -37,14 +50,6 @@ function jarvis_seo_meta_tags(): void {
             ?: ( get_bloginfo( 'description' )
                 ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.' );
         $url         = $term ? get_term_link( $term ) : esc_url( home_url( $_SERVER['REQUEST_URI'] ) );
-        $image       = $logo_url;
-        $type        = 'website';
-
-    } elseif ( is_home() || is_front_page() ) {
-        $title       = $site_name . ' | ' . get_bloginfo( 'description' );
-        $description = get_bloginfo( 'description' )
-            ?: 'Gitau Healthcare — personalised, compassionate senior care in a secure, welcoming environment.';
-        $url         = $site_url;
         $image       = $logo_url;
         $type        = 'website';
 
@@ -154,7 +159,27 @@ function jarvis_seo_json_ld(): void {
             'about'       => [ '@id' => $site_url . '#organization' ],
         ];
 
-    } elseif ( is_page( 'services' ) ) {
+    } elseif ( is_page( 'contact-us' ) || is_page( 'contact' ) ) {
+        $organization['contactPoint'] = [
+            '@type'             => 'ContactPoint',
+            'telephone'         => '+12539057452',
+            'contactType'       => 'customer service',
+            'areaServed'        => 'US',
+            'availableLanguage' => 'English',
+        ];
+        $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'ContactPage',
+            '@id'         => get_permalink() . '#webpage',
+            'url'         => get_permalink(),
+            'name'        => get_the_title() . ' | ' . $site_name,
+            'description' => 'Contact Gitau Healthcare to arrange a tour or discuss adult family home care in Lakewood, Washington.',
+            'isPartOf'    => [ '@id' => $site_url . '#website' ],
+            'about'       => [ '@id' => $site_url . '#organization' ],
+        ];
+
+    } elseif ( is_page( 'services' ) || is_page( 21 ) ) {
         $schemas[] = $organization;
         $schemas[] = [
             '@context'    => 'https://schema.org',
@@ -176,6 +201,8 @@ function jarvis_seo_json_ld(): void {
                     jarvis_seo_service_offer( 'High Acuity Care', 'Support for residents with higher daily care needs.' ),
                     jarvis_seo_service_offer( 'Medication Management', 'Medication support as part of individualised resident care plans.' ),
                     jarvis_seo_service_offer( 'Specialised Dining', 'Dining support and meal accommodations for resident needs.' ),
+                    jarvis_seo_service_offer( 'Wheelchair-Accessible Accommodation', 'Wheelchair-accessible rooms and common areas.' ),
+                    jarvis_seo_service_offer( 'Memory-Care Amenities', 'Amenities designed around the needs of memory-care residents.' ),
                 ],
             ],
         ];
