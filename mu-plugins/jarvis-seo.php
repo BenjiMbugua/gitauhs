@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -101,6 +101,7 @@ function jarvis_seo_json_ld(): void {
             '@type' => 'State',
             'name'  => 'Washington',
         ],
+        'medicalSpecialty' => 'Nursing',
     ];
 
     if ( is_home() || is_front_page() ) {
@@ -176,8 +177,30 @@ function jarvis_seo_json_ld(): void {
                     jarvis_seo_service_offer( 'High Acuity Care', 'Support for residents with higher daily care needs.' ),
                     jarvis_seo_service_offer( 'Medication Management', 'Medication support as part of individualised resident care plans.' ),
                     jarvis_seo_service_offer( 'Specialised Dining', 'Dining support and meal accommodations for resident needs.' ),
+                    jarvis_seo_service_offer( 'Wheelchair-Accessible Accommodation', 'Wheelchair-accessible rooms and common areas.' ),
+                    jarvis_seo_service_offer( 'Memory-Care Amenities', 'Amenities designed around memory-care resident needs.' ),
                 ],
             ],
+        ];
+
+    } elseif ( is_page( 'contact-us' ) || is_page( 'contact' ) ) {
+        $organization['contactPoint'] = [
+            '@type'             => 'ContactPoint',
+            'telephone'         => '+12539057452',
+            'contactType'       => 'customer service',
+            'areaServed'        => 'US',
+            'availableLanguage' => 'English',
+        ];
+        $schemas[] = $organization;
+        $schemas[] = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'ContactPage',
+            '@id'         => get_permalink() . '#webpage',
+            'url'         => get_permalink(),
+            'name'        => get_the_title() . ' | ' . $site_name,
+            'description' => 'Contact Gitau Healthcare Services in Lakewood, WA to ask about adult family home placement, availability, and care options.',
+            'isPartOf'    => [ '@id' => $site_url . '#website' ],
+            'about'       => [ '@id' => $site_url . '#organization' ],
         ];
 
     } elseif ( is_singular( 'post' ) ) {
@@ -186,8 +209,16 @@ function jarvis_seo_json_ld(): void {
         $schemas[] = [
             '@context'      => 'https://schema.org',
             '@type'         => 'Article',
+            '@id'           => get_permalink() . '#article',
             'headline'      => get_the_title(),
             'url'           => get_permalink(),
+            'mainEntityOfPage' => [
+                '@type' => 'WebPage',
+                '@id'   => get_permalink(),
+            ],
+            'description'   => wp_strip_all_tags(
+                has_excerpt() ? get_the_excerpt() : wp_trim_words( get_the_content(), 30, '...' )
+            ),
             'datePublished' => get_the_date( 'c' ),
             'dateModified'  => get_the_modified_date( 'c' ),
             'author'        => [
