@@ -8,6 +8,10 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 function jarvis_json_ld(): void {
+    if ( function_exists( 'jarvis_seo_is_quarantined' ) && jarvis_seo_is_quarantined() ) {
+        return;
+    }
+
     $site_url  = home_url( '/' );
     $site_name = get_bloginfo( 'name' ) ?: 'Gitau Healthcare Services';
 
