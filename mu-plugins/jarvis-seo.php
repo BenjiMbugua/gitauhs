@@ -2,10 +2,30 @@
 /**
  * Plugin Name: Jarvis SEO — Meta, OG & JSON-LD
  * Description: Adds meta description, Open Graph, Twitter Card, and JSON-LD structured data site-wide.
- * Version: 1.5
+ * Version: 1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Injected spam posts pending deletion (WEZ-784): off-topic gambling articles
+// published through a compromised account/plugin. Quarantined — noindexed and
+// excluded from meta/OG/JSON-LD — until they are removed from the database.
+const JARVIS_SEO_QUARANTINED_POSTS = [ 531, 533 ];
+
+function jarvis_seo_is_quarantined(): bool {
+    return is_singular() && in_array( (int) get_the_ID(), JARVIS_SEO_QUARANTINED_POSTS, true );
+}
+
+function jarvis_seo_quarantine_robots( array $robots ): array {
+    if ( jarvis_seo_is_quarantined() ) {
+        $robots = [
+            'noindex'  => true,
+            'nofollow' => true,
+        ];
+    }
+    return $robots;
+}
+add_filter( 'wp_robots', 'jarvis_seo_quarantine_robots' );
 
 // Per-page custom meta descriptions (keyed by post ID).
 $GLOBALS['jarvis_page_descriptions'] = [
@@ -14,6 +34,10 @@ $GLOBALS['jarvis_page_descriptions'] = [
 ];
 
 function jarvis_seo_meta_tags(): void {
+    if ( jarvis_seo_is_quarantined() ) {
+        return;
+    }
+
     $site_name = get_bloginfo( 'name' );
     $site_url  = home_url( '/' );
     $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
@@ -77,6 +101,10 @@ function jarvis_seo_meta_tags(): void {
 add_action( 'wp_head', 'jarvis_seo_meta_tags', 5 );
 
 function jarvis_seo_json_ld(): void {
+    if ( jarvis_seo_is_quarantined() ) {
+        return;
+    }
+
     $site_name = get_bloginfo( 'name' ) ?: 'Gitau Healthcare Services';
     $site_url  = home_url( '/' );
     $logo_url  = get_template_directory_uri() . '/assets/images/logo.png';
